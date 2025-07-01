@@ -1,0 +1,35 @@
+{
+  "C_Cpp.intelliSenseEngine": "default",
+  "idf.espIdfPathWin": "c:\\espidf24\\v5.3.1\\esp-idf",
+  "idf.pythonInstallPath": "C:\\Users\\Foras\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
+  "idf.openOcdConfigs": [
+    "board/esp32s3-builtin.cfg"
+  ],
+  "idf.portWin": "COM13",
+  "idf.toolsPathWin": "c:\\espidf24\\tool",
+  "idf.customExtraVars": {
+    "IDF_TARGET": "esp32s3"
+  },
+  "idf.flashType": "UART",
+  "files.associations": {
+    "esp_log.h": "c",
+    "stdio.h": "c",
+    "_rtc.h": "c",
+    "freertos.h": "c",
+    "stdint.h": "c",
+    "compare": "cpp",
+    "cstdint": "cpp",
+    "string.h": "c",
+    "motor_driver.h": "c",
+    "screen_fw.h": "c",
+    "cstring": "c",
+    "typeinfo": "c",
+    "settings.h": "c",
+    "language.h": "c",
+    "fstream": "c",
+    "sstream": "c",
+    "buzzer_sleep.h": "c",
+    "esp_sleep.h": "c",
+    "u_nextion.h": "c"
+  }
+}
