@@ -11,10 +11,14 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <unistd.h>
+
 static const char *TAG = "SD_LIB";
 static sdmmc_card_t *mounted_card = NULL;
 static bool is_sd_mounted = false;
 static bool spi_initialized = false;
+static sd_card_status_t current_sd_status = SD_CARD_REMOVED;
+static sd_card_status_callback_t status_callback = NULL;
+static TaskHandle_t sd_detect_task_handle = NULL;
 int mean_count = 0;
 
 esp_err_t init_spi_bus(void)
@@ -160,6 +164,11 @@ esp_err_t sd_init(void)
     // Check if card is present
     if (gpio_get_level(VSPI_PIN_NUM_DETECT) != 0)
     {
+        current_sd_status = SD_CARD_REMOVED;
+        if (status_callback)
+        {
+            status_callback(SD_CARD_REMOVED, "SD kart bulunamadı");
+        }
 #if SD_DEBUG
         ESP_LOGE(TAG, "No SD card detected");
 #endif
@@ -174,12 +183,34 @@ esp_err_t sd_init(void)
     esp_err_t ret = mount_sd_card();
     if (ret != ESP_OK)
     {
+        current_sd_status = SD_CARD_ERROR;
+        if (status_callback)
+        {
+            status_callback(SD_CARD_ERROR, "SD kart başlatılamadı");
+        }
 #if SD_DEBUG
         ESP_LOGE(TAG, "Failed to initialize SD card: %s", esp_err_to_name(ret));
 #endif
         return ret;
     }
-    xTaskCreate(sd_detect_task, "sd_detect_task", 1024 * 4, NULL, 5, NULL);
+
+    // SD kart algılama görevini başlat (eğer zaten çalışmıyorsa)
+    if (sd_detect_task_handle == NULL)
+    {
+        BaseType_t task_created = xTaskCreate(sd_detect_task, "sd_detect_task", 1024 * 4, NULL, 5, &sd_detect_task_handle);
+        if (task_created != pdPASS)
+        {
+            ESP_LOGE(TAG, "SD algılama görevi oluşturulamadı");
+            return ESP_FAIL;
+        }
+    }
+
+    current_sd_status = SD_CARD_INSERTED;
+    if (status_callback)
+    {
+        status_callback(SD_CARD_INSERTED, "SD kart başarıyla başlatıldı");
+    }
+
     return ESP_OK;
 }
 
@@ -651,81 +682,125 @@ esp_err_t check_and_perform_ota(void)
 
 void sd_detect_task(void *params)
 {
-    if (gpio_get_level(VSPI_PIN_NUM_DETECT) == 0)
+    ESP_LOGI(TAG, "SD kart algılama görevi başlatıldı");
+
+    // İlk durumu kontrol et
+    bool card_present = (gpio_get_level(VSPI_PIN_NUM_DETECT) == 0);
+
+    if (card_present)
     {
+        ESP_LOGI(TAG, "SD kart tespit edildi, başlatılıyor...");
         if (sd_init() == ESP_OK)
         {
-#if SD_DEBUG
-            ESP_LOGI(TAG, "SD kart başarıyla initlendi");
-#endif
-            // nextion_set_value("page0.sd", 1);
+            current_sd_status = SD_CARD_INSERTED;
+            if (status_callback)
+            {
+                status_callback(SD_CARD_INSERTED, "SD kart başarıyla takıldı ve hazır");
+            }
+            ESP_LOGI(TAG, "SD kart başarıyla başlatıldı");
         }
         else
         {
-#if SD_DEBUG
-            ESP_LOGE(TAG, "SD kart initleme başarısız");
-#endif
-            // nextion_set_value("page0.sd", 0);
+            current_sd_status = SD_CARD_ERROR;
+            if (status_callback)
+            {
+                status_callback(SD_CARD_ERROR, "SD kart başlatılamadı");
+            }
+            ESP_LOGE(TAG, "SD kart başlatılamadı");
         }
     }
     else
     {
-#if SD_DEBUG
-        ESP_LOGW(TAG, "SD kart bulunamadı. Lütfen bir SD kart yerleştirin.");
-#endif
+        current_sd_status = SD_CARD_REMOVED;
+        if (status_callback)
+        {
+            status_callback(SD_CARD_REMOVED, "SD kart bulunamadı");
+        }
+        ESP_LOGW(TAG, "SD kart bulunamadı, takılması bekleniyor...");
+
+        // SD kart takılmasını bekle
         while (gpio_get_level(VSPI_PIN_NUM_DETECT) == 1)
         {
             vTaskDelay(pdMS_TO_TICKS(100));
         }
+
+        // SD kart takıldı, başlat
+        ESP_LOGI(TAG, "SD kart takıldı, başlatılıyor...");
         if (sd_init() == ESP_OK)
         {
-#if SD_DEBUG
-            ESP_LOGI(TAG, "SD kart başarıyla initlendi");
-#endif
-            // nextion_set_value("page0.sd", 1);
+            current_sd_status = SD_CARD_INSERTED;
+            if (status_callback)
+            {
+                status_callback(SD_CARD_INSERTED, "SD kart başarıyla takıldı ve hazır");
+            }
+            ESP_LOGI(TAG, "SD kart başarıyla başlatıldı");
         }
         else
         {
-#if SD_DEBUG
-            ESP_LOGE(TAG, "SD kart initleme başarısız");
-#endif
-            // nextion_set_value("page0.sd", 0);
+            current_sd_status = SD_CARD_ERROR;
+            if (status_callback)
+            {
+                status_callback(SD_CARD_ERROR, "SD kart başlatılamadı");
+            }
+            ESP_LOGE(TAG, "SD kart başlatılamadı");
         }
     }
-    uint8_t sd_status = gpio_get_level(VSPI_PIN_NUM_DETECT);
-    uint8_t sd_status_old = sd_status;
+
+    // Sürekli durum kontrolü
+    bool previous_card_present = card_present;
+
     while (1)
     {
-        sd_status = gpio_get_level(VSPI_PIN_NUM_DETECT);
-        if (sd_status != sd_status_old)
+        card_present = (gpio_get_level(VSPI_PIN_NUM_DETECT) == 0);
+
+        if (card_present != previous_card_present)
         {
-            if (sd_status == 0)
+            if (card_present)
             {
+                // SD kart takıldı
+                ESP_LOGI(TAG, "SD kart takıldı, başlatılıyor...");
+                vTaskDelay(pdMS_TO_TICKS(500)); // Kartın stabil olması için bekle
+
                 if (sd_init() == ESP_OK)
                 {
-#if SD_DEBUG
-                    ESP_LOGI("SD", "SD kart başarıyla initlendi.");
-#endif
-                    // nextion_set_value("page0.sd", 1);
+                    current_sd_status = SD_CARD_INSERTED;
+                    if (status_callback)
+                    {
+                        status_callback(SD_CARD_INSERTED, "SD kart başarıyla takıldı ve hazır");
+                    }
+                    ESP_LOGI(TAG, "SD kart başarıyla başlatıldı");
                 }
                 else
                 {
-#if SD_DEBUG
-                    ESP_LOGE("SD", "SD kart initleme başarısız. SD kart arızalı olabilir.");
-#endif
-                    // nextion_set_value("page0.sd", 0);
+                    current_sd_status = SD_CARD_ERROR;
+                    if (status_callback)
+                    {
+                        status_callback(SD_CARD_ERROR, "SD kart başlatılamadı, kart arızalı olabilir");
+                    }
+                    ESP_LOGE(TAG, "SD kart başlatılamadı, kart arızalı olabilir");
                 }
             }
             else
             {
-                vTaskDelay(pdMS_TO_TICKS(50));
+                // SD kart çıkarıldı
+                ESP_LOGW(TAG, "SD kart çıkarıldı!");
+                if (status_callback)
+                {
+                    status_callback(SD_CARD_REMOVED, "SD kart çıkarıldı");
+                }
+
+                // Güvenli şekilde unmount et
+                vTaskDelay(pdMS_TO_TICKS(100));
                 unmount_sd_card();
-                vTaskDelay(pdMS_TO_TICKS(50));
+                vTaskDelay(pdMS_TO_TICKS(100));
                 deinit_spi_bus();
-                // nextion_set_value("page0.sd", 0);
+
+                current_sd_status = SD_CARD_REMOVED;
+                ESP_LOGI(TAG, "SD kart güvenli şekilde çıkarıldı");
             }
-            sd_status_old = sd_status;
+            previous_card_present = card_present;
         }
+
         vTaskDelay(pdMS_TO_TICKS(200));
     }
 }
@@ -734,4 +809,63 @@ bool file_exists(const char *path)
 {
     struct stat st;
     return (stat(path, &st) == 0);
+}
+
+// Yeni eklenen fonksiyonlar
+
+void sd_set_status_callback(sd_card_status_callback_t callback)
+{
+    status_callback = callback;
+}
+
+sd_card_status_t sd_get_card_status(void)
+{
+    return current_sd_status;
+}
+
+bool sd_is_card_mounted(void)
+{
+    return is_sd_mounted;
+}
+
+esp_err_t sd_force_reinit(void)
+{
+    ESP_LOGI(TAG, "SD kart yeniden başlatılıyor...");
+
+    // Mevcut durumu temizle
+    if (is_sd_mounted)
+    {
+        unmount_sd_card();
+    }
+    if (spi_initialized)
+    {
+        deinit_spi_bus();
+    }
+
+    // Yeni başlatma dene
+    esp_err_t ret = sd_init();
+    if (ret == ESP_OK)
+    {
+        current_sd_status = SD_CARD_INSERTED;
+        if (status_callback)
+        {
+            status_callback(SD_CARD_INSERTED, "SD kart başarıyla yeniden başlatıldı");
+        }
+    }
+    else
+    {
+        current_sd_status = SD_CARD_ERROR;
+        if (status_callback)
+        {
+            status_callback(SD_CARD_ERROR, "SD kart yeniden başlatılamadı");
+        }
+    }
+
+    return ret;
+}
+
+esp_err_t sd_init_with_callback(sd_card_status_callback_t callback)
+{
+    status_callback = callback;
+    return sd_init();
 }

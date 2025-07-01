@@ -17,8 +17,29 @@
 #include "string.h"
 #include "main.h"
 
+static const char *TAG = "MAIN";
+
 settings_t settings;
 therapy_settings_t therapy_settings;
+
+// SD kart durum değişikliği callback fonksiyonu
+void sd_card_status_callback(sd_card_status_t status, const char *message)
+{
+    switch (status)
+    {
+    case SD_CARD_INSERTED:
+        ESP_LOGI(TAG, "✅ SD Kart Durumu: %s", message);
+        break;
+
+    case SD_CARD_REMOVED:
+        ESP_LOGW(TAG, "❌ SD Kart Durumu: %s", message);
+        break;
+
+    case SD_CARD_ERROR:
+        ESP_LOGE(TAG, "⚠️ SD Kart Durumu: %s", message);
+        break;
+    }
+}
 
 void nvs_get_data(void)
 {
@@ -126,7 +147,38 @@ void nextion_data_mapping_task(void *params)
         default:
             break;
         }
-        vTaskResume(NULL);
+    }
+}
+
+void sd_card_task(void *params)
+{
+    uint8_t sd_check_counter = 0;
+    ESP_LOGI(TAG, "SD kart başlatılıyor...");
+    esp_err_t sd_ret = sd_init_with_callback(sd_card_status_callback);
+    if (sd_ret != ESP_OK)
+    {
+        ESP_LOGW(TAG, "SD kart başlatılamadı: %s", esp_err_to_name(sd_ret));
+    }
+    else
+    {
+        ESP_LOGI(TAG, "SD kart başarıyla başlatıldı");
+    }
+
+    while (1)
+    {
+        // Her 5 saniyede bir SD kart durumunu kontrol et
+        if (sd_check_counter % 50 == 0)
+        { // 50 * 100ms = 5 saniye
+            sd_card_status_t current_status = sd_get_card_status();
+            bool is_mounted = sd_is_card_mounted();
+
+            // ESP_LOGI(TAG, "SD Durum Kontrolü - Durum: %d, Monte: %s",
+            //          current_status, is_mounted ? "Evet" : "Hayır");
+            sd_check_counter = 0;
+        }
+
+        sd_check_counter++;
+        vTaskDelay(100 / portTICK_PERIOD_MS);
     }
 }
 
@@ -135,35 +187,26 @@ void init_components(void)
     u_nvs_init("settings");
     nvs_get_data();
     _rtc_init();
-    sd_init();
     buzzer_sleep_init();
     honeywell_init();
     driver_init();
     screen_fw_init();
     nextion_init();
-    if (settings.first_start)
-    {
-        //* İLK KURULUM
-    }
-    else
-    {
-        //* İLK KURULUM DEĞİL
-    }
-    //*HER TÜRLÜ YAPIALACAKLAR
+    xTaskCreate(sd_card_task, "SD Card Task", 4096, NULL, 5, NULL);
+    xTaskCreate(nextion_data_mapping_task, "Nextion Data Mapping Task", 4096, NULL, 5, &nextion_data.nextion_data_maping_handle);
+    ESP_LOGI(TAG, "Tüm bileşenler başlatıldı");
 
-    // _wifi_init();
+    if (!settings.first_start && settings.wifi_status)
+    {
+        _wifi_init();
+    }
 }
 
 void app_main(void)
 {
-    init_components();
-    // driver_speed_control(50.0f);
+    ESP_LOGI(TAG, "Uygulama başlatılıyor...");
 
-    while (1)
-    {
-        // printf("fp_flow: %.2f, fp_pressure: %.2f\n", sensor_data.real_flow, sensor_data.real_pressure);
-        vTaskDelay(100 / portTICK_PERIOD_MS);
-    }
+    init_components();
 }
 
 // TODO
