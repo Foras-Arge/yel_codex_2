@@ -34,7 +34,13 @@ int convert_pressure(int raw_pressure)
 
 int convert_flow(int raw_flow)
 {
-    // constants from matlab flow_analysis.m
+    /*
+     * Polynomial coefficients obtained from flow_analysis.m. The original
+     * polynomials included constant offsets which caused the converted flow to
+     * report a non‑zero value when there was no differential pressure.  To make
+     * the zero‑flow condition map to 0 L/min we remove those offsets here and
+     * explicitly subtract them after applying the polynomial.
+     */
     double p1[] = {2.5419e-06, -0.0017567, 0.4532, 2.5134};
     double p2[] = {4.1106e-07, -0.0005016, 0.24597, 5.7692};
     double p3[] = {-9.0825e-06, 0.063717, 25.757};
@@ -52,31 +58,37 @@ int convert_flow(int raw_flow)
         sign = 1;
     }
 
-    // Determine which polynomial to use based on flow range
+    // Determine which polynomial to use based on flow range. Each polynomial
+    // originally contained a constant term representing the sensor's zero-flow
+    // output.  When calibrated_flow is zero we want the result to be exactly
+    // zero, so the constant term is subtracted after applying the polynomial.
+
+    double offset; // zero-flow offset in the same units as 'flow'
+
     if (raw_flow <= 20)
     {
         flow = p1[0] * raw_flow * raw_flow * raw_flow +
                p1[1] * raw_flow * raw_flow +
-               p1[2] * raw_flow +
-               p1[3];
+               p1[2] * raw_flow;
+        offset = p1[3];
     }
     else if (raw_flow <= 450)
     {
         flow = p2[0] * raw_flow * raw_flow * raw_flow +
                p2[1] * raw_flow * raw_flow +
-               p2[2] * raw_flow +
-               p2[3];
+               p2[2] * raw_flow;
+        offset = p2[3];
     }
     else
     {
         flow = p3[0] * raw_flow * raw_flow +
-               p3[1] * raw_flow +
-               p3[2];
+               p3[1] * raw_flow;
+        offset = p3[2];
     }
 
-    // Apply sign and scaling
-    flow = sign * flow * 11;
-    return flow;
+    // Remove the offset then apply sign and scaling
+    flow = (flow - offset) * 11 * sign;
+    return (int)flow;
 }
 
 /**
