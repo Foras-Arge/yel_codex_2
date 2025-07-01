@@ -157,11 +157,11 @@ void init_components(void)
 void app_main(void)
 {
     init_components();
-    driver_speed_control(50.0f);
+    // driver_speed_control(50.0f);
 
     while (1)
     {
-        printf("fp_flow: %d, fp_pressure: %d\n", sensor_data.flow, sensor_data.pressure);
+        // printf("fp_flow: %.2f, fp_pressure: %.2f\n", sensor_data.real_flow, sensor_data.real_pressure);
         vTaskDelay(100 / portTICK_PERIOD_MS);
     }
 }

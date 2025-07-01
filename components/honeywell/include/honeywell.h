@@ -13,12 +13,16 @@
 
 typedef struct
 {
-    int raw_pressure;
-    int raw_flow;
-    int pressure;
-    int flow;
-    int pressure_base;
-    int flow_base;
+    int16_t raw_pressure;
+    int16_t raw_flow;
+    int16_t pressure;
+    int16_t flow;
+    int16_t pressure_base;
+    int16_t flow_base;
+    float flow_array[60];
+    uint16_t flow_counter;
+    float real_flow;
+    float real_pressure;
 } sensor_data_t;
 
 extern sensor_data_t sensor_data;

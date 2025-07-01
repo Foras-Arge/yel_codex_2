@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include "math.h"
 #include "esp_system.h"
+#include "u_math.h"
 #include <string.h>
 
 #define FLOW_I2C_NUM I2C_NUM_0     // Akış için I2C portu
@@ -88,6 +89,13 @@ int convert_flow(int raw_flow)
 
     // Remove the offset then apply sign and scaling
     flow = (flow - offset) * 11 * sign;
+
+    // Overflow kontrolü
+    if (flow > 32767)
+        flow = 32767;
+    if (flow < -32768)
+        flow = -32768;
+
     return (int)flow;
 }
 
@@ -125,7 +133,7 @@ int filter_flow(int conv_flow)
  * @param final_pressure Pointer üzerinden elde edilecek son basınç değeri
  * @param final_flow     Pointer üzerinden elde edilecek son akış değeri
  */
-void process_sensor_data(int raw_pressure, int raw_flow, int *final_pressure, int *final_flow)
+void process_sensor_data(int16_t raw_pressure, int16_t raw_flow, int16_t *final_pressure, int16_t *final_flow)
 {
     // Kalibrasyon: sensör boşta okunan değeri düşüyoruz
     int calibrated_pressure = raw_pressure - sensor_data.pressure_base;
@@ -294,17 +302,35 @@ int measure_i2c(i2c_port_t i2c_num, uint8_t times)
 
 void fp_sensors_task(void *pvParameters)
 {
+    // Flow array'ini sıfırla
+    memset(sensor_data.flow_array, 0, sizeof(sensor_data.flow_array));
+    sensor_data.flow_counter = 0;
+
     while (1)
     {
-
         sensor_data.raw_pressure = measure_i2c(PRESSURE_I2C_NUM, REPEAT_CALCULATION);
         sensor_data.raw_flow = measure_i2c(FLOW_I2C_NUM, REPEAT_CALCULATION);
-        // #if FP_SENSORS_DEBUG
-        //         ESP_LOGI(TAG, "Raw Pressure: %d , Raw Flow: %d ", sensor_data.raw_pressure, sensor_data.raw_flow);
-        // #endif
 
+        int16_t processed_flow = 0;
         process_sensor_data(sensor_data.raw_pressure, sensor_data.raw_flow,
-                            &sensor_data.pressure, &sensor_data.flow);
+                            &sensor_data.pressure, &processed_flow);
+
+        // Flow array'ine yeni değeri ekle
+        u_shift_and_insert_float(sensor_data.flow_array, 60, (float)processed_flow);
+
+        // Counter'ı güncelle (maksimum 60)
+        if (sensor_data.flow_counter < 60)
+        {
+            sensor_data.flow_counter++;
+        }
+
+        // Flow ortalamasını hesapla
+        sensor_data.flow = u_average_float(sensor_data.flow_array, sensor_data.flow_counter);
+        sensor_data.flow = sensor_data.flow - processed_flow;
+        sensor_data.real_flow = (float)sensor_data.flow / 10.0f;
+        sensor_data.real_pressure = (float)sensor_data.pressure / 10.0f;
+
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
 
