@@ -14,6 +14,11 @@ void u_shift_and_insert_float(float arr[], int size, float new_value);
 float u_average_float(float arr[], uint64_t count);
 float u_sum_float(float arr[], uint64_t count);
 
+// Double array işlemleri
+void u_shift_and_insert_double(double arr[], int size, double new_value);
+double u_average_double(double arr[], uint64_t count);
+double u_sum_double(double arr[], uint64_t count);
+
 // Uint16 array işlemleri
 void u_shift_and_insert_uint16(uint16_t arr[], int size, uint16_t new_value);
 uint16_t u_average_uint16(uint16_t arr[], uint64_t count);

@@ -87,6 +87,32 @@ float u_sum_float(float arr[], uint64_t count)
     return sum;
 }
 
+void u_shift_and_insert_double(double arr[], int size, double new_value)
+{
+    memmove(&arr[1], &arr[0], (size - 1) * sizeof(double));
+    arr[0] = new_value; // Yeni elemanı başa ekle
+}
+
+double u_average_double(double arr[], uint64_t count)
+{
+    double sum = 0;
+    for (int i = 0; i < count; i++)
+    {
+        sum += arr[i];
+    }
+    return sum / count;
+}
+
+double u_sum_double(double arr[], uint64_t count)
+{
+    double sum = 0;
+    for (int i = 0; i < count; i++)
+    {
+        sum += arr[i];
+    }
+    return sum;
+}
+
 void u_shift_and_insert_uint16(uint16_t arr[], int size, uint16_t new_value)
 {
     memmove(&arr[1], &arr[0], (size - 1) * sizeof(uint16_t));

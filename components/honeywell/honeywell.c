@@ -259,7 +259,7 @@ int measure_i2c(i2c_port_t i2c_num, uint8_t times)
         retry_count = 0;
         while (retry_count < max_retries)
         {
-            ret = i2c_master_receive(dev_handle, out, sizeof(out), 5 / portTICK_PERIOD_MS);
+            ret = i2c_master_receive(dev_handle, out, sizeof(out), 3 / portTICK_PERIOD_MS);
             if (ret == ESP_OK)
             {
                 break; // Success, exit retry loop
@@ -269,7 +269,7 @@ int measure_i2c(i2c_port_t i2c_num, uint8_t times)
             if (ret == ESP_ERR_TIMEOUT || ret == ESP_ERR_INVALID_STATE)
             {
                 retry_count++;
-                vTaskDelay(pdMS_TO_TICKS(5)); // Small delay between retries
+                vTaskDelay(pdMS_TO_TICKS(2)); // Small delay between retries
                 continue;
             }
 
@@ -329,8 +329,6 @@ void fp_sensors_task(void *pvParameters)
         sensor_data.flow = sensor_data.flow - processed_flow;
         sensor_data.real_flow = (float)sensor_data.flow / 10.0f;
         sensor_data.real_pressure = (float)sensor_data.pressure / 10.0f;
-
-        vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
 

@@ -641,7 +641,7 @@ void start_motor()
         .channel = LEDC_CHANNEL_0,
         .intr_type = LEDC_INTR_DISABLE,
         .timer_sel = LEDC_TIMER_0,
-        .duty = 4095, // Başlangıçta %100 duty cycle (13-bit için max değer)
+        .duty = 0, // Başlangıçta %100 duty cycle (13-bit için max değer)
         .hpoint = 0};
     ledc_channel_config(&ledc_channel);
 #if DRIVER_DEBUG

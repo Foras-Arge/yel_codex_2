@@ -30,6 +30,12 @@
     "sstream": "c",
     "buzzer_sleep.h": "c",
     "esp_sleep.h": "c",
-    "u_nextion.h": "c"
+    "u_nextion.h": "c",
+    "task.h": "c",
+    "u_nvs.h": "c",
+    "math.h": "c",
+    "gpio.h": "c",
+    "cpap.h": "c",
+    "esp_timer.h": "c"
   }
 }

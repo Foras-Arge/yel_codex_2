@@ -16,6 +16,7 @@
 #include "language.h"
 #include "string.h"
 #include "main.h"
+#include "cpap.h"
 
 static const char *TAG = "MAIN";
 
@@ -48,27 +49,100 @@ void nvs_get_data(void)
     memset(settings.nvs_data, 0, sizeof(settings.nvs_data));
     if (!settings.first_start) //? İLK KURULUM DEĞIL
     {
-        u_nvs_get_uint32("language", &settings.language);
-        u_nvs_get_uint32("device_mode", &settings.device_mode);
-        u_nvs_get_uint32("therapy_status", &therapy_settings.therapy_status);
-        u_nvs_get_uint32("wifi_status", &settings.wifi_status);
+        // Her bir ayar için, eğer get işlemi başarısız olursa (yani anahtar yoksa), ilk kurulum değerini yaz
+        if (u_nvs_get_uint32("language", &settings.language) != ESP_OK)
+        {
+            settings.language = LANGUAGE;
+            u_nvs_set_uint32("language", LANGUAGE);
+        }
+        if (u_nvs_get_uint32("device_mode", &settings.device_mode) != ESP_OK)
+        {
+            settings.device_mode = DEVICE_MODE;
+            u_nvs_set_uint32("device_mode", DEVICE_MODE);
+        }
+        if (u_nvs_get_uint32("therapy_status", &therapy_settings.therapy_status) != ESP_OK)
+        {
+            therapy_settings.therapy_status = THERAPY_STATUS;
+            u_nvs_set_uint32("therapy_status", THERAPY_STATUS);
+        }
+        if (u_nvs_get_uint32("wifi_status", &settings.wifi_status) != ESP_OK)
+        {
+            settings.wifi_status = WIFI_STATUS_OFF;
+            u_nvs_set_uint32("wifi_status", WIFI_STATUS_OFF);
+        }
         if (settings.wifi_status)
         {
-            u_nvs_get_string("wifi_ssid", settings.wifi_ssid, sizeof(settings.wifi_ssid));
-            u_nvs_get_string("wifi_password", settings.wifi_password, sizeof(settings.wifi_password));
+            if (u_nvs_get_string("wifi_ssid", settings.wifi_ssid, sizeof(settings.wifi_ssid)) != ESP_OK)
+            {
+                strcpy(settings.wifi_ssid, ""); // Varsayılan olarak boş bırak
+                u_nvs_set_string("wifi_ssid", "");
+            }
+            if (u_nvs_get_string("wifi_password", settings.wifi_password, sizeof(settings.wifi_password)) != ESP_OK)
+            {
+                strcpy(settings.wifi_password, ""); // Varsayılan olarak boş bırak
+                u_nvs_set_string("wifi_password", "");
+            }
         }
-        u_nvs_get_uint32("ramp_status", &settings.ramp_status);
-        u_nvs_get_uint32("ramp_time", &settings.ramp_time);
-        u_nvs_get_uint32("ramp_pressure", &settings.ramp_pressure);
-        u_nvs_get_uint32("humid_status", &settings.humid_status);
-        u_nvs_get_uint32("humid_level", &settings.humid_level);
-        u_nvs_get_uint32("easy_breath_status", &settings.easy_breath_status);
-        u_nvs_get_uint32("easy_breath_percent", &settings.easy_breath_percent);
-        u_nvs_get_uint32("brightness", &settings.brightness);
-        u_nvs_get_uint32("screen_sleep_time", &settings.screen_sleep_time);
-        u_nvs_get_uint32("mask_off_alarm", &settings.mask_off_alarm);
-        u_nvs_get_uint32("oto_ramp_off", &settings.oto_ramp_off);
-        u_nvs_get_uint32("oto_start", &settings.oto_start);
+        if (u_nvs_get_uint32("ramp_status", &settings.ramp_status) != ESP_OK)
+        {
+            settings.ramp_status = RAMP_STATUS;
+            u_nvs_set_uint32("ramp_status", RAMP_STATUS);
+        }
+        if (u_nvs_get_uint32("ramp_time", &settings.ramp_time) != ESP_OK)
+        {
+            settings.ramp_time = RAMP_TIME;
+            u_nvs_set_uint32("ramp_time", RAMP_TIME);
+        }
+        if (u_nvs_get_uint32("ramp_pressure", &settings.ramp_pressure) != ESP_OK)
+        {
+            settings.ramp_pressure = RAMP_PRESSURE;
+            u_nvs_set_uint32("ramp_pressure", RAMP_PRESSURE);
+        }
+        if (u_nvs_get_uint32("humid_status", &settings.humid_status) != ESP_OK)
+        {
+            settings.humid_status = HUMID_STATUS;
+            u_nvs_set_uint32("humid_status", HUMID_STATUS);
+        }
+        if (u_nvs_get_uint32("humid_level", &settings.humid_level) != ESP_OK)
+        {
+            settings.humid_level = HUMID_LEVEL;
+            u_nvs_set_uint32("humid_level", HUMID_LEVEL);
+        }
+        if (u_nvs_get_uint32("easy_breath_status", &settings.easy_breath_status) != ESP_OK)
+        {
+            settings.easy_breath_status = EASY_BREATH_STATUS;
+            u_nvs_set_uint32("easy_breath_status", EASY_BREATH_STATUS);
+        }
+        if (u_nvs_get_uint32("easy_breath_percent", &settings.easy_breath_percent) != ESP_OK)
+        {
+            settings.easy_breath_percent = EASY_BREATH_PERCENT;
+            u_nvs_set_uint32("easy_breath_percent", EASY_BREATH_PERCENT);
+        }
+        if (u_nvs_get_uint32("brightness", &settings.brightness) != ESP_OK)
+        {
+            settings.brightness = BRIGHTNESS;
+            u_nvs_set_uint32("brightness", BRIGHTNESS);
+        }
+        if (u_nvs_get_uint32("screen_sleep_time", &settings.screen_sleep_time) != ESP_OK)
+        {
+            settings.screen_sleep_time = SCREEN_SLEEP_TIME;
+            u_nvs_set_uint32("screen_sleep_time", SCREEN_SLEEP_TIME);
+        }
+        if (u_nvs_get_uint32("mask_off_alarm", &settings.mask_off_alarm) != ESP_OK)
+        {
+            settings.mask_off_alarm = MASK_OFF_ALARM;
+            u_nvs_set_uint32("mask_off_alarm", MASK_OFF_ALARM);
+        }
+        if (u_nvs_get_uint32("oto_ramp_off", &settings.oto_ramp_off) != ESP_OK)
+        {
+            settings.oto_ramp_off = OTO_RAMP_OFF;
+            u_nvs_set_uint32("oto_ramp_off", OTO_RAMP_OFF);
+        }
+        if (u_nvs_get_uint32("oto_start", &settings.oto_start) != ESP_OK)
+        {
+            settings.oto_start = OTO_START;
+            u_nvs_set_uint32("oto_start", OTO_START);
+        }
     }
     else //? İLK KURULUM
     {
@@ -169,11 +243,7 @@ void sd_card_task(void *params)
         // Her 5 saniyede bir SD kart durumunu kontrol et
         if (sd_check_counter % 50 == 0)
         { // 50 * 100ms = 5 saniye
-            sd_card_status_t current_status = sd_get_card_status();
-            bool is_mounted = sd_is_card_mounted();
-
-            // ESP_LOGI(TAG, "SD Durum Kontrolü - Durum: %d, Monte: %s",
-            //          current_status, is_mounted ? "Evet" : "Hayır");
+            // SD kart durumunu kontrol et (şimdilik sadece sayaç sıfırla)
             sd_check_counter = 0;
         }
 
@@ -189,12 +259,18 @@ void init_components(void)
     _rtc_init();
     buzzer_sleep_init();
     honeywell_init();
+
+    // Motor sürücüsünü geciktir
+    vTaskDelay(pdMS_TO_TICKS(500));
     driver_init();
+
     screen_fw_init();
     nextion_init();
-    xTaskCreate(sd_card_task, "SD Card Task", 4096, NULL, 5, NULL);
+
+    // SD kart başlatmasını geçici olarak devre dışı bırak
+    xTaskCreate(sd_card_task, "SD Card Task", 6144, NULL, 5, NULL);
     xTaskCreate(nextion_data_mapping_task, "Nextion Data Mapping Task", 4096, NULL, 5, &nextion_data.nextion_data_maping_handle);
-    ESP_LOGI(TAG, "Tüm bileşenler başlatıldı");
+    ESP_LOGI(TAG, "Tüm bileşenler başlatıldı (SD kart hariç)");
 
     if (!settings.first_start && settings.wifi_status)
     {
@@ -207,6 +283,14 @@ void app_main(void)
     ESP_LOGI(TAG, "Uygulama başlatılıyor...");
 
     init_components();
+
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
+
+    cpap_data.pressure_setpoint = 10.0f;
+
+    cpap_start();
+    vTaskDelay(300000 / portTICK_PERIOD_MS);
+    cpap_stop();
 }
 
 // TODO
