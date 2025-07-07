@@ -36,6 +36,7 @@
     "math.h": "c",
     "gpio.h": "c",
     "cpap.h": "c",
-    "esp_timer.h": "c"
+    "esp_timer.h": "c",
+    "honeywell.h": "c"
   }
 }

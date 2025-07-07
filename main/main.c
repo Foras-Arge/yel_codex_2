@@ -280,17 +280,46 @@ void init_components(void)
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "Uygulama başlatılıyor...");
-
     init_components();
 
-    vTaskDelay(5000 / portTICK_PERIOD_MS);
-
-    cpap_data.pressure_setpoint = 10.0f;
-
-    cpap_start();
-    vTaskDelay(300000 / portTICK_PERIOD_MS);
-    cpap_stop();
+    switch (settings.device_mode)
+    {
+    case DEVICE_MODE_CPAP:
+    {
+        cpap_init();
+        break;
+    }
+    case DEVICE_MODE_APAP:
+    {
+        // apap_init();
+        break;
+    }
+    case DEVICE_MODE_BPAP:
+    {
+        // bpap_init();
+        break;
+    }
+    case DEVICE_MODE_BPAP_ST:
+    {
+        // bpap_st_init();
+        break;
+    }
+    case DEVICE_MODE_AUTO_BPAP:
+    {
+        // auto_bpap_init();
+        break;
+    }
+    case DEVICE_MODE_AVAPS:
+    {
+        // avaps_init();
+        break;
+    }
+    case DEVICE_MODE_ASV:
+    {
+        // asv_init();
+        break;
+    }
+    default:
+        break;
+    }
 }
-
-// TODO

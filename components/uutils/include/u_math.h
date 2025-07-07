@@ -42,4 +42,7 @@ int64_t u_average_int64(int64_t arr[], uint64_t count);
 // Hex string işlemleri
 uint8_t *u_hex_to_bytes(const char *hex, size_t *out_len);
 
+// Time işlemleri
+float u_get_time_seconds();
+
 #endif

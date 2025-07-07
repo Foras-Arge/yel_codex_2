@@ -1,5 +1,6 @@
 #include "u_math.h"
 #include "string.h"
+#include "esp_timer.h"
 
 double abs_double(double x)
 {
@@ -260,4 +261,9 @@ uint8_t *u_hex_to_bytes(const char *hex, size_t *out_len)
         bytes[i] = (high << 4) | low;
     }
     return bytes;
+}
+
+float u_get_time_seconds()
+{
+    return (float)esp_timer_get_time() / 1000000.0f;
 }
