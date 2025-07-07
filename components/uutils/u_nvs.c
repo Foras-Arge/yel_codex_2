@@ -264,9 +264,7 @@ esp_err_t u_nvs_set_uint32(const char *key, uint32_t value)
         return ret;
     }
 
-#if NVS_DEBUG
     ESP_LOGI(TAG, "Set uint32: %s = %lu", key, (unsigned long)value);
-#endif
 
     return ESP_OK;
 }

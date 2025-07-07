@@ -37,27 +37,26 @@ static void event_handler(void *arg, esp_event_base_t event_base,
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START)
     {
+        ESP_LOGI(TAG, "WiFi STA başlatıldı, bağlantı kuruluyor...");
         esp_wifi_connect();
     }
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
     {
+        wifi_event_sta_disconnected_t *disconnect_info = (wifi_event_sta_disconnected_t *)event_data;
         g_wifi_status.is_connected = false;
+
+        ESP_LOGW(TAG, "WiFi bağlantısı kesildi. Sebep: %d", disconnect_info->reason);
+
         if (s_retry_num < s_max_retry)
         {
+            ESP_LOGI(TAG, "Yeniden bağlanmaya çalışılıyor... (%d/%d)", s_retry_num + 1, s_max_retry);
             esp_wifi_connect();
             s_retry_num++;
-            if (wifi_debug_enabled)
-            {
-                ESP_LOGI(TAG, "Bağlantı kesildi, yeniden bağlanmaya çalışılıyor... (%d/%d)", s_retry_num, s_max_retry);
-            }
         }
         else
         {
             xEventGroupSetBits(g_wifi_status.wifi_event_group, WIFI_FAIL_BIT);
-            if (wifi_debug_enabled)
-            {
-                ESP_LOGE(TAG, "Maksimum yeniden bağlanma denemesi aşıldı");
-            }
+            ESP_LOGE(TAG, "Maksimum yeniden bağlanma denemesi aşıldı");
         }
     }
     else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP)
@@ -68,15 +67,12 @@ static void event_handler(void *arg, esp_event_base_t event_base,
         uint8_t mac[6];
         esp_wifi_get_mac(WIFI_IF_STA, mac);
 
-        if (wifi_debug_enabled)
-        {
-            ESP_LOGI(TAG, "WiFi bağlantısı başarılı!");
-            ESP_LOGI(TAG, "MAC Adresi: %02X:%02X:%02X:%02X:%02X:%02X",
-                     mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-            ESP_LOGI(TAG, "IP Adresi: " IPSTR, IP2STR(&event->ip_info.ip));
-            ESP_LOGI(TAG, "Gateway: " IPSTR, IP2STR(&event->ip_info.gw));
-            ESP_LOGI(TAG, "Netmask: " IPSTR, IP2STR(&event->ip_info.netmask));
-        }
+        ESP_LOGI(TAG, "WiFi bağlantısı başarılı!");
+        ESP_LOGI(TAG, "MAC Adresi: %02X:%02X:%02X:%02X:%02X:%02X",
+                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        ESP_LOGI(TAG, "IP Adresi: " IPSTR, IP2STR(&event->ip_info.ip));
+        ESP_LOGI(TAG, "Gateway: " IPSTR, IP2STR(&event->ip_info.gw));
+        ESP_LOGI(TAG, "Netmask: " IPSTR, IP2STR(&event->ip_info.netmask));
 
         s_retry_num = 0;
         g_wifi_status.is_connected = true;
@@ -205,12 +201,16 @@ esp_err_t _wifi_init_sta(_wifi_config_t *config)
             .pmf_cfg = {
                 .capable = true,
                 .required = false},
+            .failure_retry_cnt = 3,
+            .listen_interval = 3,
         },
     };
 
     // SSID ve şifreyi kopyala
     strcpy((char *)wifi_config.sta.ssid, config->ssid);
     strcpy((char *)wifi_config.sta.password, config->password);
+
+    ESP_LOGI(TAG, "WiFi yapılandırması: SSID=%s, Auth=%d", config->ssid, wifi_config.sta.threshold.authmode);
 
     // WiFi modunu ayarla
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));

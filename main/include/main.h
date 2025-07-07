@@ -6,7 +6,7 @@
 #include "driver/gpio.h"
 
 //! İLK KURULUM DEĞERLERİ
-#define WIFI_STATUS_OFF 0
+#define WIFI_STATUS 1
 #define LANGUAGE LANGUAGE_TURKISH
 #define DEVICE_MODE DEVICE_MODE_CPAP
 #define THERAPY_STATUS false
