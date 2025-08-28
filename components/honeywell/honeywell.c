@@ -259,7 +259,7 @@ int measure_i2c(i2c_port_t i2c_num, uint8_t times)
         retry_count = 0;
         while (retry_count < max_retries)
         {
-            ret = i2c_master_receive(dev_handle, out, sizeof(out), 3 / portTICK_PERIOD_MS);
+            ret = i2c_master_receive(dev_handle, out, sizeof(out), 1 / portTICK_PERIOD_MS);
             if (ret == ESP_OK)
             {
                 break; // Success, exit retry loop
@@ -269,7 +269,7 @@ int measure_i2c(i2c_port_t i2c_num, uint8_t times)
             if (ret == ESP_ERR_TIMEOUT || ret == ESP_ERR_INVALID_STATE)
             {
                 retry_count++;
-                vTaskDelay(pdMS_TO_TICKS(2)); // Small delay between retries
+                vTaskDelay(pdMS_TO_TICKS(1)); // Small delay between retries
                 continue;
             }
 
@@ -360,5 +360,5 @@ void honeywell_init()
         ESP_LOGE(TAG, "Pressure base: %d , Flow base: %d ", sensor_data.pressure_base, sensor_data.flow_base);
         esp_restart();
     }
-    xTaskCreate(fp_sensors_task, "fp_sensors_task", 8192, NULL, 5, NULL);
+    xTaskCreatePinnedToCore(fp_sensors_task, "fp_sensors_task", 8192, NULL, 1, NULL, 1);
 }

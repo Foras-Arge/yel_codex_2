@@ -6,6 +6,7 @@
 #include "mqtt_client.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#define SERIAL_NUMBER "YEL080725001"
 
 #ifdef __cplusplus
 extern "C"
@@ -13,7 +14,7 @@ extern "C"
 #endif
 
 // Debug kontrolü için makro
-#define MQTT_DEBUG_ENABLED 1 // 1: Debug aktif, 0: Debug pasif
+#define MQTT_DEBUG_ENABLED 0 // 1: Debug aktif, 0: Debug pasif
 
 #if MQTT_DEBUG_ENABLED
 #define MQTT_DEBUG_LOG(tag, format, ...) ESP_LOGI(tag, format, ##__VA_ARGS__)
@@ -24,6 +25,15 @@ extern "C"
 #define MQTT_DEBUG_ERROR(tag, format, ...)
 #define MQTT_DEBUG_WARN(tag, format, ...)
 #endif
+
+    typedef struct
+    {
+        char topic[128];
+        char data[128];
+        TaskHandle_t mqtt_data_mapping_task_handle;
+    } mqtt_data_t;
+
+    extern mqtt_data_t mqtt_data;
 
     extern esp_mqtt_client_handle_t mqtt_client;
     extern esp_mqtt_client_config_t mqtt_config;

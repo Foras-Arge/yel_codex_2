@@ -236,6 +236,51 @@ void nextion_data_mapping_task(void *params)
     }
 }
 
+void mqtt_data_mapping_task(void *params)
+{
+    vTaskSuspend(NULL);
+    while (1)
+    {
+        mqtt_action_type_t action_type = (mqtt_action_type_t)atoi(strtok(mqtt_data.data, ","));
+        char *data = strtok(NULL, "\n");
+        printf("action_type: %d, data: %s\n", action_type, data);
+        switch (action_type)
+        {
+        case MQTT_ACTION_TYPE_START_STOP:
+            if (strcmp(data, "1") == 0)
+            {
+                ESP_LOGI(TAG, "CPAP START");
+                vTaskDelay(100 / portTICK_PERIOD_MS);
+                xTaskCreatePinnedToCore(cpap_start, "CPAP START", 10240, NULL, 15, &cpap_data.cpap_start_task_handle, 1);
+                vTaskDelay(100 / portTICK_PERIOD_MS);
+                vTaskResume(cpap_data.cpap_start_task_handle);
+            }
+            else if (strcmp(data, "0") == 0)
+            {
+                ESP_LOGI(TAG, "CPAP STOP");
+                vTaskDelay(100 / portTICK_PERIOD_MS);
+                xTaskCreatePinnedToCore(cpap_stop, "CPAP STOP", 10240, NULL, 15, &cpap_data.cpap_stop_task_handle, 1);
+                vTaskDelay(100 / portTICK_PERIOD_MS);
+                vTaskResume(cpap_data.cpap_stop_task_handle);
+            }
+            break;
+        case MQTT_ACTION_TYPE_RAMP_TIME:
+            break;
+        case MQTT_ACTION_TYPE_RAMP_PRESSURE:
+            //* İŞLEMLER
+            break;
+        case MQTT_ACTION_TYPE_HUMID_LEVEL:
+            //* İŞLEMLER
+            break;
+        default:
+            break;
+        }
+        memset(mqtt_data.data, 0, sizeof(mqtt_data.data));
+        memset(mqtt_data.topic, 0, sizeof(mqtt_data.topic));
+        vTaskSuspend(NULL);
+    }
+}
+
 void sd_card_task(void *params)
 {
     uint8_t sd_check_counter = 0;
@@ -285,6 +330,7 @@ void init_components(void)
         ESP_LOGI(TAG, "WiFi etkin, bağlantı kuruluyor...");
         // WiFi'yi başlat
         _wifi_init();
+        xTaskCreatePinnedToCore(mqtt_data_mapping_task, "mqtt_data_mapping_task", 10240, NULL, 5, &mqtt_data.mqtt_data_mapping_task_handle, 1);
     }
     else
     {
@@ -297,7 +343,7 @@ void init_components(void)
     honeywell_init();
     driver_init();
     screen_fw_init();
-    nextion_init();
+    // nextion_init();
 
     ESP_LOGI(TAG, "Bileşenler başlatıldı");
 }
@@ -305,45 +351,5 @@ void init_components(void)
 void app_main(void)
 {
     init_components();
-
-    switch (settings.device_mode)
-    {
-    case DEVICE_MODE_CPAP:
-    {
-        cpap_init();
-        break;
-    }
-    case DEVICE_MODE_APAP:
-    {
-        // apap_init();
-        break;
-    }
-    case DEVICE_MODE_BPAP:
-    {
-        // bpap_init();
-        break;
-    }
-    case DEVICE_MODE_BPAP_ST:
-    {
-        // bpap_st_init();
-        break;
-    }
-    case DEVICE_MODE_AUTO_BPAP:
-    {
-        // auto_bpap_init();
-        break;
-    }
-    case DEVICE_MODE_AVAPS:
-    {
-        // avaps_init();
-        break;
-    }
-    case DEVICE_MODE_ASV:
-    {
-        // asv_init();
-        break;
-    }
-    default:
-        break;
-    }
+    cpap_init();
 }

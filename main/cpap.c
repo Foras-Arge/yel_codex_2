@@ -3,6 +3,7 @@
 #include <math.h>
 #include "driver/gpio.h"
 #include "esp_timer.h"
+#include "_mqtt.h"
 
 cpap cpap_data;
 
@@ -20,7 +21,7 @@ static float exp_threshold_percent = 0;
 
 void cpap_pid_control_task(void *params)
 {
-    int windup = 100;
+    int windup = 120;
     double Kp = 0.01, Ki = 0.00054, Kd = 0.0153;
     double error = 0;
     static double int_error = 0, old_error = 0;
@@ -29,6 +30,19 @@ void cpap_pid_control_task(void *params)
     cpap_data.motor_speed_average_counter = 0;
     while (1)
     {
+        if (!cpap_data.cpap_status)
+        {
+            vTaskSuspend(NULL);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+            windup = 100;
+            Kp = 0.01, Ki = 0.00054, Kd = 0.0153;
+            error = 0;
+            int_error = 0, old_error = 0;
+            motor_speed = 0;
+            bias = 0;
+            target_pressure = 0;
+            cpap_data.motor_speed_average_counter = 0;
+        }
         target_pressure = (int16_t)(cpap_data.pressure_setpoint * 10);
         bias = -4.3086e-06 * target_pressure * target_pressure + 0.0033225 * target_pressure + 0.1789;
 
@@ -44,7 +58,7 @@ void cpap_pid_control_task(void *params)
 
         old_error = error;
 
-        if (motor_speed <= 0.08)
+        if (motor_speed <= 0.15)
         {
             motor_speed = 0.15;
         }
@@ -65,6 +79,8 @@ void cpap_pid_control_task(void *params)
         }
         vTaskDelay(10 / portTICK_PERIOD_MS);
     }
+    ESP_LOGE("CPAP", "CPAP PID CONTROL TASK DELETED");
+    vTaskDelete(NULL);
 }
 
 void cpap_average_motor_speed_task(void *params)
@@ -74,9 +90,19 @@ void cpap_average_motor_speed_task(void *params)
     cpap_data.motor_speed_average_counter = 0;
     while (1)
     {
+        if (!cpap_data.cpap_status)
+        {
+            vTaskSuspend(NULL);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+            memset(cpap_data.motor_speed_array, 0, sizeof(cpap_data.motor_speed_array));
+            cpap_data.motor_speed_average = 0;
+            cpap_data.motor_speed_average_counter = 0;
+        }
         cpap_data.motor_speed_average = u_average_double(cpap_data.motor_speed_array, cpap_data.motor_speed_average_counter);
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
+    ESP_LOGI("CPAP", "CPAP AVERAGE MOTOR SPEED TASK DELETED");
+    vTaskDelete(NULL);
 }
 
 void cpap_breath_detection_task(void *params)
@@ -89,6 +115,17 @@ void cpap_breath_detection_task(void *params)
     old_breath_state = 3;
     while (1)
     {
+        if (!cpap_data.cpap_status)
+        {
+            vTaskSuspend(NULL);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+            insp_threshold = cpap_data.pressure_setpoint * insp_threshold_percent / 100;
+            exp_threshold = cpap_data.pressure_setpoint * exp_threshold_percent / 100;
+            target_pressure = cpap_data.pressure_setpoint;
+            cpap_data.breath_state = 0;
+            now = 0;
+            old_breath_state = 3;
+        }
         float delta_pressure = sensor_data.real_pressure - target_pressure;
 
         if (cpap_data.breath_state != 1 && delta_pressure > insp_threshold)
@@ -97,7 +134,7 @@ void cpap_breath_detection_task(void *params)
             cpap_data.breath_state = 1;
             vTaskResume(cpap_data.cpap_breath_duration_task_handle);
             exp_counter++;
-            ESP_LOGI("BREATH", "Ekspirasyon (nefes verme) tespit edildi. Basınç: %.2f", sensor_data.real_pressure);
+            // ESP_LOGI("BREATH", "Ekspirasyon (nefes verme) tespit edildi. Basınç: %.2f", sensor_data.real_pressure);
             if (cpap_data.easy_breath_status && cpap_data.easy_breath_task_suspended)
             {
                 vTaskResume(cpap_data.cpap_easy_breath_task_handle);
@@ -110,12 +147,12 @@ void cpap_breath_detection_task(void *params)
             cpap_data.breath_state = 2;
             vTaskResume(cpap_data.cpap_breath_duration_task_handle);
             insp_counter++;
-            ESP_LOGI("BREATH", "İnspirasyon (nefes alma) tespit edildi. Basınç: %.2f", sensor_data.real_pressure);
+            // ESP_LOGI("BREATH", "İnspirasyon (nefes alma) tespit edildi. Basınç: %.2f", sensor_data.real_pressure);
         }
 
         if (cpap_data.breath_state != 0 && delta_pressure > exp_threshold && delta_pressure < insp_threshold)
         {
-            ESP_LOGI("BREATH", "Nötr durumda bekle");
+            // ESP_LOGI("BREATH", "Nötr durumda bekle");
             old_breath_state = cpap_data.breath_state;
             cpap_data.breath_state = 0;
             vTaskResume(cpap_data.cpap_breath_duration_task_handle);
@@ -132,14 +169,33 @@ void cpap_breath_detection_task(void *params)
             }
         }
         vTaskDelay(10 / portTICK_PERIOD_MS);
+        if (!cpap_data.cpap_status)
+        {
+            vTaskSuspend(NULL);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+            insp_threshold = cpap_data.pressure_setpoint * insp_threshold_percent / 100;
+            exp_threshold = cpap_data.pressure_setpoint * exp_threshold_percent / 100;
+            target_pressure = cpap_data.pressure_setpoint;
+            cpap_data.breath_state = 0;
+            now = 0;
+            old_breath_state = 3;
+        }
     }
+    ESP_LOGI("CPAP", "CPAP BREATH DETECTION TASK DELETED");
+    vTaskDelete(NULL);
 }
 
 void cpap_obs_or_central_apnea_task_handle_start_task(void *params)
 {
-    vTaskSuspend(NULL);
+    cpap_data.breath_state = 0;
     while (1)
     {
+        if (!cpap_data.cpap_status)
+        {
+            vTaskSuspend(NULL);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+            cpap_data.breath_state = 0;
+        }
         if (cpap_data.breath_state != 0)
         {
             vTaskSuspend(NULL);
@@ -154,11 +210,12 @@ void cpap_obs_or_central_apnea_task_handle_start_task(void *params)
         }
         vTaskDelay(50 / portTICK_PERIOD_MS);
     }
+    ESP_LOGI("CPAP", "CPAP OBS OR CENTRAL APNEA TASK HANDLE START TASK DELETED");
+    vTaskDelete(NULL);
 }
 
 void cpap_breath_duration_task(void *params)
 {
-    vTaskSuspend(NULL);
     now = u_get_time_seconds();
     cpap_data.hipoapnea_count = 0;
     cpap_data.obstructive_apnea_count = 0;
@@ -166,6 +223,16 @@ void cpap_breath_duration_task(void *params)
     uint8_t hipoapnea_counter_ = 0;
     while (1)
     {
+        if (!cpap_data.cpap_status)
+        {
+            vTaskSuspend(NULL);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+            now = u_get_time_seconds();
+            cpap_data.hipoapnea_count = 0;
+            cpap_data.obstructive_apnea_count = 0;
+            cpap_data.central_apnea_count = 0;
+            hipoapnea_counter_ = 0;
+        }
         if (old_breath_state == 1)
         {
             cpap_data.exp_duration = u_get_time_seconds() - now;
@@ -208,13 +275,19 @@ void cpap_breath_duration_task(void *params)
         now = u_get_time_seconds();
         vTaskSuspend(NULL);
     }
+    ESP_LOGI("CPAP", "CPAP APNEA TASK DELETED");
+    vTaskDelete(NULL);
 }
 
 void cpap_apnea_task(void *params)
 {
-    vTaskSuspend(NULL);
     while (1)
     {
+        if (!cpap_data.cpap_status)
+        {
+            vTaskSuspend(NULL);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+        }
         if (u_get_time_seconds() - now > 10)
         {
             if (apnea_type == 0)
@@ -237,52 +310,73 @@ void cpap_apnea_task(void *params)
 
 void cpap_obs_or_central_apnea_task(void *params)
 {
-    vTaskSuspend(NULL);
     while (1)
     {
+        if (!cpap_data.cpap_status)
+        {
+            vTaskSuspend(NULL);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+        }
         if (sensor_data.real_pressure > cpap_data.pressure_setpoint * 0.98 && sensor_data.real_pressure < cpap_data.pressure_setpoint * 1.02)
         {
-            printf("Central apnea\n");
             apnea_type = 1;
         }
         else
         {
-            printf("Obstructive apnea\n");
             apnea_type = 0;
             vTaskSuspend(NULL);
         }
 
         if (cpap_data.breath_state != 0)
         {
-            printf("Nefes var\n");
             vTaskSuspend(NULL);
         }
         vTaskDelay(10 / portTICK_PERIOD_MS);
     }
+    ESP_LOGI("CPAP", "CPAP OBS OR CENTRAL APNEA TASK DELETED");
+    vTaskDelete(NULL);
 }
 
 void print_pressure_task(void *params)
 {
     while (1)
     {
-        // printf("Basınç: %.2f, Hedef Basınç: %.2f, TInsp: %d, TExp: %d, TResp: %d, MinInsp: %d, MinExp: %d, MinResp: %d\n",
-        //        sensor_data.real_pressure, cpap_data.pressure_setpoint, cpap_data.therapy_inspiration_count, cpap_data.therapy_expiration_count,
-        //        cpap_data.therapy_respiration_rate, cpap_data.minute_inspiration_count, cpap_data.minute_expiration_count, cpap_data.respiration_rate);
+        if (!cpap_data.cpap_status)
+        {
+            vTaskSuspend(NULL);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+        }
+        char data2[256];
+        snprintf(data2, sizeof(data2), "Basınç: %.2f, Hedef Basınç: %.2f, TInsp: %d, TExp: %d, TResp: %d, MinInsp: %d, MinExp: %d, MinResp: %d",
+                 sensor_data.real_pressure, cpap_data.pressure_setpoint, cpap_data.therapy_inspiration_count, cpap_data.therapy_expiration_count,
+                 cpap_data.therapy_respiration_rate, cpap_data.minute_inspiration_count, cpap_data.minute_expiration_count, cpap_data.respiration_rate);
+        mqtt_publish("Foras/yel/YEL080725001/pressure", data2);
 
-        // printf("Süreler - İnsp: %.3fs, Exp: %.3fs, İnspOrt: %.3fs, ExpOrt: %.3fs, NefesYok: %.3fs\n",
-        //        cpap_data.insp_duration, cpap_data.exp_duration, cpap_data.insp_duration_average,
-        //        cpap_data.exp_duration_average, cpap_data.no_breath_duration);
+        memset(data2, 0, sizeof(data2));
+        snprintf(data2, sizeof(data2), "Süreler - İnsp: %.3fs, Exp: %.3fs, İnspOrt: %.3fs, ExpOrt: %.3fs, NefesYok: %.3fs",
+                 cpap_data.insp_duration, cpap_data.exp_duration, cpap_data.insp_duration_average,
+                 cpap_data.exp_duration_average, cpap_data.no_breath_duration);
+        mqtt_publish("Foras/yel/YEL080725001/breath", data2);
 
-        printf("Apnea - Hipo: %d, Obstr: %d, Centr: %d\n", cpap_data.hipoapnea_count, cpap_data.obstructive_apnea_count, cpap_data.central_apnea_count);
+        memset(data2, 0, sizeof(data2));
+        snprintf(data2, sizeof(data2), "Apnea - Hipo: %d, Obstr: %d, Centr: %d", cpap_data.hipoapnea_count, cpap_data.obstructive_apnea_count, cpap_data.central_apnea_count);
+        mqtt_publish("Foras/yel/YEL080725001/apnea", data2);
 
-        vTaskDelay(100 / portTICK_PERIOD_MS);
+        vTaskDelay(200 / portTICK_PERIOD_MS);
     }
+    ESP_LOGI("CPAP", "PRINT PRESSURE TASK DELETED");
+    vTaskDelete(NULL);
 }
 
 void cpap_threshold_set_task(void *params)
 {
     while (1)
     {
+        if (!cpap_data.cpap_status)
+        {
+            vTaskSuspend(NULL);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+        }
         if (target_pressure >= 3.0f && target_pressure < 8.0f)
         {
             insp_threshold_percent = 15.1;
@@ -320,17 +414,23 @@ void cpap_threshold_set_task(void *params)
         }
         vTaskDelay(500 / portTICK_PERIOD_MS);
     }
+    ESP_LOGI("CPAP", "CPAP THRESHOLD SET TASK DELETED");
+    vTaskDelete(NULL);
 }
 
 void cpap_easy_breath_task(void *params)
 {
     double motor_speed = 0;
     bool task_active = false;
-
-    vTaskSuspend(NULL);
-
     while (1)
     {
+        if (!cpap_data.cpap_status)
+        {
+            vTaskSuspend(NULL);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+            motor_speed = 0;
+            task_active = false;
+        }
         if (!task_active)
         {
             // Task aktif değilse diğer task'ları suspend et
@@ -374,6 +474,8 @@ void cpap_easy_breath_task(void *params)
         cpap_data.easy_breath_task_suspended = true;
         vTaskSuspend(NULL);
     }
+    ESP_LOGI("CPAP", "CPAP EASY BREATH TASK DELETED");
+    vTaskDelete(NULL);
 }
 
 void cpap_breath_counter_task(void *params)
@@ -393,6 +495,23 @@ void cpap_breath_counter_task(void *params)
 
     while (1)
     {
+        if (!cpap_data.cpap_status)
+        {
+            vTaskSuspend(NULL);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+            cpap_data.therapy_inspiration_count = 0;
+            cpap_data.therapy_expiration_count = 0;
+            cpap_data.respiration_rate = 0;
+            cpap_data.therapy_respiration_rate = 0;
+            cpap_data.minute_inspiration_count = 0;
+            cpap_data.minute_expiration_count = 0;
+            insp_counter = 0;
+            exp_counter = 0;
+
+            // Array'leri sıfırla
+            memset(cpap_data.insp_counter_array, 0, sizeof(cpap_data.insp_counter_array));
+            memset(cpap_data.exp_counter_array, 0, sizeof(cpap_data.exp_counter_array));
+        }
         u_shift_and_insert_uint16(cpap_data.insp_counter_array, 600, insp_counter);
         cpap_data.therapy_inspiration_count += insp_counter;
         insp_counter = 0;
@@ -408,6 +527,8 @@ void cpap_breath_counter_task(void *params)
 
         vTaskDelay(100 / portTICK_PERIOD_MS);
     }
+    ESP_LOGI("CPAP", "CPAP BREATH COUNTER TASK DELETED");
+    vTaskDelete(NULL);
 }
 
 void cpap_ramp_task(void *params)
@@ -417,6 +538,14 @@ void cpap_ramp_task(void *params)
     uint16_t ramp_counter = 1;
     while (1)
     {
+        if (!cpap_data.cpap_status)
+        {
+            vTaskSuspend(NULL);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+            old_setpoint = cpap_data.pressure_setpoint;
+            cpap_data.pressure_setpoint = cpap_data.ramp_pressure;
+            ramp_counter = 1;
+        }
         if (u_get_time_seconds() - cpap_data.start_time >= cpap_data.ramp_time * ramp_counter * 12)
         {
             cpap_data.pressure_setpoint = (((old_setpoint - cpap_data.ramp_pressure) / 5) * ramp_counter) + cpap_data.ramp_pressure;
@@ -429,10 +558,12 @@ void cpap_ramp_task(void *params)
         if (ramp_counter > 5)
         {
             settle_time_finished = true;
-            vTaskDelete(NULL);
+            vTaskSuspend(NULL);
         }
         vTaskDelay(10 / portTICK_PERIOD_MS);
     }
+    ESP_LOGI("CPAP", "CPAP RAMP TASK DELETED");
+    vTaskDelete(NULL);
 }
 
 void cpap_mask_off_task(void *params)
@@ -441,6 +572,13 @@ void cpap_mask_off_task(void *params)
     float timer_duration = 0;
     while (1)
     {
+        if (!cpap_data.cpap_status)
+        {
+            vTaskSuspend(NULL);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+            timer_started = false;
+            timer_duration = 0;
+        }
         if (sensor_data.real_pressure < target_pressure * 0.90)
         {
             if (!timer_started)
@@ -470,160 +608,126 @@ void cpap_mask_off_task(void *params)
                     vTaskDelay(50 / portTICK_PERIOD_MS);
                 }
                 vTaskDelay(1000 / portTICK_PERIOD_MS);
-                cpap_stop();
+                // cpap_stop();
             }
         }
 
         vTaskDelay(200 / portTICK_PERIOD_MS);
     }
+    ESP_LOGI("CPAP", "CPAP MASK OFF TASK DELETED");
+    vTaskDelete(NULL);
 }
 
 void cpap_oto_start_task(void *params)
 {
-    cpap_data.oto_start_status = true;
     while (1)
     {
         if (cpap_data.oto_start_status)
         {
             if (sensor_data.real_pressure < -1.0f || sensor_data.real_pressure > 1.0f)
             {
-                cpap_start();
-                vTaskDelete(NULL);
+                // cpap_start();
+                vTaskSuspend(NULL);
+                vTaskDelay(100 / portTICK_PERIOD_MS);
             }
         }
         vTaskDelay(100 / portTICK_PERIOD_MS);
     }
+    ESP_LOGI("CPAP", "CPAP OTO START TASK DELETED");
+    vTaskDelete(NULL);
 }
 
 void cpap_init()
 {
-    xTaskCreate(cpap_oto_start_task, "CPAP OTO START", 6144, NULL, 5, &cpap_data.cpap_oto_start_task_handle);
+    cpap_data.oto_start_status = false;
+    xTaskCreatePinnedToCore(cpap_ramp_task, "CPAP RAMP", 6144, NULL, 5, &cpap_data.cpap_ramp_task_handle, 1);
+    xTaskCreatePinnedToCore(cpap_threshold_set_task, "CPAP THRESHOLD SET", 6144, NULL, 5, &cpap_data.cpap_threshold_set_task_handle, 1);
+    xTaskCreatePinnedToCore(cpap_pid_control_task, "CPAP", 6144, NULL, 1, &cpap_data.cpap_pid_control_task_handle, 1);
+    xTaskCreatePinnedToCore(cpap_average_motor_speed_task, "CPAP AVERAGE MOTOR SPEED", 6144, NULL, 5, &cpap_data.cpap_average_motor_speed_task_handle, 1);
+    xTaskCreatePinnedToCore(cpap_breath_counter_task, "CPAP BREATH COUNTER", 6144, NULL, 15, &cpap_data.cpap_breath_conter_task_handle, 1);
+    xTaskCreatePinnedToCore(print_pressure_task, "PRINT PRESSURE", 6144, NULL, 1, &cpap_data.print_pressure_task_handle, 1);
+    xTaskCreatePinnedToCore(cpap_breath_duration_task, "CPAP BREATH DURATION", 6144, NULL, 15, &cpap_data.cpap_breath_duration_task_handle, 1);
+    xTaskCreatePinnedToCore(cpap_breath_detection_task, "CPAP BREATH DETECTION", 6144, NULL, 15, &cpap_data.cpap_breath_detection_task_handle, 1);
+    xTaskCreatePinnedToCore(cpap_obs_or_central_apnea_task_handle_start_task, "CPAP OBS OR CENTRAL APNEA TASK HANDLE START", 6144, NULL, 5, &cpap_data.cpap_obs_or_central_apnea_task_handle_start_task_handle, 1);
+    xTaskCreatePinnedToCore(cpap_easy_breath_task, "CPAP EASY BREATH", 6144, NULL, 5, &cpap_data.cpap_easy_breath_task_handle, 1);
+    xTaskCreatePinnedToCore(cpap_apnea_task, "CPAP APNEA", 6144, NULL, 5, &cpap_data.cpap_apnea_task_handle, 1);
+    xTaskCreatePinnedToCore(cpap_obs_or_central_apnea_task, "CPAP OBS OR CENTRAL APNEA", 6144, NULL, 5, &cpap_data.cpap_obs_or_central_apnea_task_handle, 1);
+    xTaskCreatePinnedToCore(cpap_mask_off_task, "CPAP MASK OFF", 6144, NULL, 5, &cpap_data.cpap_mask_off_task_handle, 1);
+    xTaskCreatePinnedToCore(cpap_oto_start_task, "CPAP OTO START", 6144, NULL, 5, &cpap_data.cpap_oto_start_task_handle, 1);
 }
 
-void cpap_start()
+void cpap_start(void *params)
 {
-    cpap_data.cpap_status = true;
-    cpap_data.pressure_setpoint = 10.0f;
-
-    cpap_data.easy_breath_status = true;
-    cpap_data.easy_breath_percent = 50.0f;
-
-    cpap_data.ramp_status = false;
-    cpap_data.ramp_time = 5.0f;
-    cpap_data.ramp_pressure = 5.0f;
-
-    cpap_data.mask_off_status = true;
-
-    cpap_data.start_time = u_get_time_seconds();
-
-    cpap_data.easy_breath_task_suspended = false;
-    cpap_data.pid_task_suspended = false;
-    cpap_data.breath_detection_task_suspended = false;
-    settle_time_finished = false;
-
-    if (cpap_data.ramp_status)
+    vTaskSuspend(NULL);
+    while (1)
     {
-        xTaskCreate(cpap_ramp_task, "CPAP RAMP", 6144, NULL, 5, &cpap_data.cpap_ramp_task_handle);
-        vTaskDelay(50 / portTICK_PERIOD_MS);
-    }
-    if (cpap_data.mask_off_status)
-    {
-        xTaskCreate(cpap_mask_off_task, "CPAP MASK OFF", 6144, NULL, 5, &cpap_data.cpap_mask_off_task_handle);
-        vTaskDelay(50 / portTICK_PERIOD_MS);
-    }
-    xTaskCreate(cpap_threshold_set_task, "CPAP THRESHOLD SET", 6144, NULL, 5, &cpap_data.cpap_threshold_set_task_handle);
-    xTaskCreate(cpap_pid_control_task, "CPAP", 6144, NULL, 5, &cpap_data.cpap_pid_control_task_handle);
-    xTaskCreate(cpap_average_motor_speed_task, "CPAP AVERAGE MOTOR SPEED", 6144, NULL, 5, &cpap_data.cpap_average_motor_speed_task_handle);
-    xTaskCreate(cpap_breath_counter_task, "CPAP BREATH COUNTER", 6144, NULL, 5, &cpap_data.cpap_breath_conter_task_handle);
-    xTaskCreate(print_pressure_task, "PRINT PRESSURE", 6144, NULL, 5, &cpap_data.print_pressure_task_handle);
-    xTaskCreate(cpap_breath_duration_task, "CPAP BREATH DURATION", 6144, NULL, 5, &cpap_data.cpap_breath_duration_task_handle);
-    xTaskCreate(cpap_breath_detection_task, "CPAP BREATH DETECTION", 6144, NULL, 5, &cpap_data.cpap_breath_detection_task_handle);
-    if (cpap_data.ramp_status)
-    {
-        while (!settle_time_finished)
+        cpap_data.cpap_status = true;
+        cpap_data.pressure_setpoint = 10.0f;
+
+        cpap_data.easy_breath_status = true;
+        cpap_data.easy_breath_percent = 70.0f;
+
+        cpap_data.ramp_status = false;
+        cpap_data.ramp_time = 5.0f;
+        cpap_data.ramp_pressure = 5.0f;
+
+        cpap_data.mask_off_status = true;
+
+        cpap_data.start_time = u_get_time_seconds();
+        settle_time_finished = false;
+
+        if (cpap_data.ramp_status)
         {
+            // vTaskResume(cpap_data.cpap_ramp_task_handle);
+            vTaskDelay(50 / portTICK_PERIOD_MS);
+        }
+        if (cpap_data.mask_off_status)
+        {
+            // vTaskResume(cpap_data.cpap_mask_off_task_handle);
+            vTaskDelay(50 / portTICK_PERIOD_MS);
+        }
+        vTaskResume(cpap_data.cpap_threshold_set_task_handle);
+        vTaskResume(cpap_data.cpap_pid_control_task_handle);
+        vTaskResume(cpap_data.cpap_average_motor_speed_task_handle);
+        vTaskResume(cpap_data.cpap_breath_conter_task_handle);
+        vTaskResume(cpap_data.print_pressure_task_handle);
+        vTaskResume(cpap_data.cpap_breath_duration_task_handle);
+        vTaskResume(cpap_data.cpap_breath_detection_task_handle);
+        if (cpap_data.ramp_status)
+        {
+            while (!settle_time_finished)
+            {
+                vTaskDelay(100 / portTICK_PERIOD_MS);
+            }
+        }
+        else
+        {
+            vTaskDelay(6000 / portTICK_PERIOD_MS);
+            settle_time_finished = true;
+        }
+        vTaskSuspend(NULL);
+    }
+}
+
+void cpap_stop(void *params)
+{
+    vTaskSuspend(NULL);
+    while (1)
+    {
+        cpap_data.cpap_status = false;
+        if (eTaskGetState(cpap_data.cpap_start_task_handle) != eSuspended)
+        {
+            vTaskSuspend(cpap_data.cpap_start_task_handle);
             vTaskDelay(100 / portTICK_PERIOD_MS);
         }
-    }
-    else
-    {
-        vTaskDelay(60000 / portTICK_PERIOD_MS);
-        settle_time_finished = true;
-    }
-    xTaskCreate(cpap_obs_or_central_apnea_task_handle_start_task, "CPAP OBS OR CENTRAL APNEA TASK HANDLE START", 6144, NULL, 5, &cpap_data.cpap_obs_or_central_apnea_task_handle_start_task_handle);
-    xTaskCreate(cpap_easy_breath_task, "CPAP EASY BREATH", 6144, NULL, 7, &cpap_data.cpap_easy_breath_task_handle);
-    xTaskCreate(cpap_apnea_task, "CPAP APNEA", 6144, NULL, 5, &cpap_data.cpap_apnea_task_handle);
-    xTaskCreate(cpap_obs_or_central_apnea_task, "CPAP OBS OR CENTRAL APNEA", 6144, NULL, 5, &cpap_data.cpap_obs_or_central_apnea_task_handle);
-}
-
-void cpap_stop()
-{
-    if (cpap_data.cpap_threshold_set_task_handle != NULL)
-    {
-        vTaskDelete(cpap_data.cpap_threshold_set_task_handle);
-        cpap_data.cpap_threshold_set_task_handle = NULL;
-    }
-    if (cpap_data.cpap_pid_control_task_handle != NULL)
-    {
-        vTaskDelete(cpap_data.cpap_pid_control_task_handle);
-        cpap_data.cpap_pid_control_task_handle = NULL;
-    }
-    if (cpap_data.cpap_breath_detection_task_handle != NULL)
-    {
-        vTaskDelete(cpap_data.cpap_breath_detection_task_handle);
-        cpap_data.cpap_breath_detection_task_handle = NULL;
-    }
-    if (cpap_data.cpap_easy_breath_task_handle != NULL)
-    {
-        vTaskDelete(cpap_data.cpap_easy_breath_task_handle);
-        cpap_data.cpap_easy_breath_task_handle = NULL;
-    }
-    if (cpap_data.cpap_average_motor_speed_task_handle != NULL)
-    {
-        vTaskDelete(cpap_data.cpap_average_motor_speed_task_handle);
-        cpap_data.cpap_average_motor_speed_task_handle = NULL;
-    }
-    if (cpap_data.cpap_breath_conter_task_handle != NULL)
-    {
-        vTaskDelete(cpap_data.cpap_breath_conter_task_handle);
-        cpap_data.cpap_breath_conter_task_handle = NULL;
-    }
-    if (cpap_data.print_pressure_task_handle != NULL)
-    {
-        vTaskDelete(cpap_data.print_pressure_task_handle);
-        cpap_data.print_pressure_task_handle = NULL;
-    }
-    if (cpap_data.cpap_breath_duration_task_handle != NULL)
-    {
-        vTaskDelete(cpap_data.cpap_breath_duration_task_handle);
-        cpap_data.cpap_breath_duration_task_handle = NULL;
-    }
-    if (cpap_data.cpap_apnea_task_handle != NULL)
-    {
-        vTaskDelete(cpap_data.cpap_apnea_task_handle);
-        cpap_data.cpap_apnea_task_handle = NULL;
-    }
-    if (cpap_data.cpap_obs_or_central_apnea_task_handle != NULL)
-    {
-        vTaskDelete(cpap_data.cpap_obs_or_central_apnea_task_handle);
-        cpap_data.cpap_obs_or_central_apnea_task_handle = NULL;
-    }
-    if (cpap_data.cpap_obs_or_central_apnea_task_handle_start_task_handle != NULL)
-    {
-        vTaskDelete(cpap_data.cpap_obs_or_central_apnea_task_handle_start_task_handle);
-        cpap_data.cpap_obs_or_central_apnea_task_handle_start_task_handle = NULL;
-    }
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-    driver_speed_control(10);
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-    driver_speed_control(0);
-    cpap_data.stop_time = u_get_time_seconds();
-    printf("CPAP Süresi: %.2fs\n", cpap_data.stop_time - cpap_data.start_time);
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
-    xTaskCreate(cpap_oto_start_task, "CPAP OTO START", 6144, NULL, 5, &cpap_data.cpap_oto_start_task_handle);
-    if (cpap_data.cpap_mask_off_task_handle != NULL)
-    {
-        vTaskDelete(cpap_data.cpap_mask_off_task_handle);
-        cpap_data.cpap_mask_off_task_handle = NULL;
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+        driver_speed_control(10);
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+        driver_speed_control(0);
+        cpap_data.stop_time = u_get_time_seconds();
+        printf("CPAP Süresi: %.2fs\n", cpap_data.stop_time - cpap_data.start_time);
+        vTaskDelay(3000 / portTICK_PERIOD_MS);
+        vTaskResume(cpap_data.cpap_oto_start_task_handle);
+        vTaskSuspend(NULL);
     }
 }

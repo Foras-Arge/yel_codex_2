@@ -7,6 +7,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
+#include "_mqtt.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -30,6 +31,17 @@ extern "C"
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
 
+    extern esp_event_handler_t _mqtt_event_handler;
+
+    // Statik IP yapılandırması
+    typedef struct
+    {
+        bool use_static_ip;
+        uint8_t ip[4];
+        uint8_t gateway[4];
+        uint8_t netmask[4];
+    } _wifi_static_ip_t;
+
     // WiFi yapılandırma yapısı
     typedef struct
     {
@@ -37,6 +49,7 @@ extern "C"
         char password[64];
         int max_retry;
         int retry_interval_ms;
+        _wifi_static_ip_t static_ip;
     } _wifi_config_t;
     extern _wifi_config_t g_wifi_config;
 
@@ -131,6 +144,16 @@ extern "C"
      * @return Şifre string'i
      */
     const char *_wifi_get_password(void);
+
+    /**
+     * @brief Statik IP ayarlarını değiştirir
+     * @param use_static_ip Statik IP kullanılıp kullanılmayacağı
+     * @param ip IP adresi (4 byte array)
+     * @param gateway Gateway adresi (4 byte array)
+     * @param netmask Netmask (4 byte array)
+     * @return ESP_OK başarılı, ESP_FAIL başarısız
+     */
+    esp_err_t _wifi_set_static_ip(bool use_static_ip, uint8_t *ip, uint8_t *gateway, uint8_t *netmask);
 
     /**
      * @brief WiFi kütüphanesini başlatır

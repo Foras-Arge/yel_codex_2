@@ -1,6 +1,6 @@
 #include "_wifi.h"
 #include "string.h"
-#include "_mqtt.h"
+#include "lwip/ip4_addr.h"
 
 static const char *TAG = "WIFI_STA";
 
@@ -175,8 +175,41 @@ esp_err_t _wifi_init_sta(_wifi_config_t *config)
     // Event loop başlat
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-    // Station netif oluştur
+    // 1) STA netif oluştur
     esp_netif_create_default_wifi_sta();
+
+    // 2) Statik IP konfigürasyonu (eğer etkinse)
+    esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (sta_netif != NULL && config->static_ip.use_static_ip)
+    {
+        esp_netif_dhcpc_stop(sta_netif);
+        esp_netif_ip_info_t ip_info;
+        IP4_ADDR(&ip_info.ip, config->static_ip.ip[0], config->static_ip.ip[1],
+                 config->static_ip.ip[2], config->static_ip.ip[3]);
+        IP4_ADDR(&ip_info.gw, config->static_ip.gateway[0], config->static_ip.gateway[1],
+                 config->static_ip.gateway[2], config->static_ip.gateway[3]);
+        IP4_ADDR(&ip_info.netmask, config->static_ip.netmask[0], config->static_ip.netmask[1],
+                 config->static_ip.netmask[2], config->static_ip.netmask[3]);
+        esp_netif_set_ip_info(sta_netif, &ip_info);
+
+        if (wifi_debug_enabled)
+        {
+            ESP_LOGI(TAG, "Statik IP konfigürasyonu ayarlandı: %d.%d.%d.%d",
+                     config->static_ip.ip[0], config->static_ip.ip[1],
+                     config->static_ip.ip[2], config->static_ip.ip[3]);
+        }
+    }
+    else if (sta_netif == NULL)
+    {
+        if (wifi_debug_enabled)
+        {
+            ESP_LOGW(TAG, "STA netif handle alınamadı, statik IP ayarlanamadı");
+        }
+    }
+    else if (wifi_debug_enabled)
+    {
+        ESP_LOGI(TAG, "Statik IP devre dışı, DHCP kullanılacak");
+    }
 
     // WiFi başlat
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -217,10 +250,10 @@ esp_err_t _wifi_init_sta(_wifi_config_t *config)
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
 
     // Yeniden bağlanma task'ını başlat
-    xTaskCreate(wifi_reconnect_task, "wifi_reconnect", 4096, NULL, 5, NULL);
+    xTaskCreatePinnedToCore(wifi_reconnect_task, "wifi_reconnect", 4096, NULL, 5, NULL, 0);
 
     // Ana WiFi task'ını başlat
-    xTaskCreate(wifi_main_task, "wifi_main", 4096, NULL, 5, &wifi_task_handle);
+    xTaskCreatePinnedToCore(wifi_main_task, "wifi_main", 4096, NULL, 5, &wifi_task_handle, 0);
 
     g_wifi_status.is_initialized = true;
     g_wifi_status.is_connected = false;
@@ -548,14 +581,68 @@ const char *_wifi_get_password(void)
     return g_wifi_config.password;
 }
 
+esp_err_t _wifi_set_static_ip(bool use_static_ip, uint8_t *ip, uint8_t *gateway, uint8_t *netmask)
+{
+    if (!g_wifi_status.is_initialized)
+    {
+        if (wifi_debug_enabled)
+        {
+            ESP_LOGE(TAG, "WiFi henüz başlatılmamış");
+        }
+        return ESP_FAIL;
+    }
+
+    // Mevcut bağlantıyı kes
+    esp_wifi_disconnect();
+
+    // Statik IP ayarlarını güncelle
+    g_wifi_config.static_ip.use_static_ip = use_static_ip;
+
+    if (use_static_ip && ip != NULL && gateway != NULL && netmask != NULL)
+    {
+        memcpy(g_wifi_config.static_ip.ip, ip, 4);
+        memcpy(g_wifi_config.static_ip.gateway, gateway, 4);
+        memcpy(g_wifi_config.static_ip.netmask, netmask, 4);
+
+        if (wifi_debug_enabled)
+        {
+            ESP_LOGI(TAG, "Statik IP ayarları güncellendi: %d.%d.%d.%d",
+                     ip[0], ip[1], ip[2], ip[3]);
+        }
+    }
+    else if (wifi_debug_enabled)
+    {
+        ESP_LOGI(TAG, "Statik IP devre dışı bırakıldı, DHCP kullanılacak");
+    }
+
+    // Yeniden bağlan
+    esp_wifi_connect();
+
+    return ESP_OK;
+}
+
 void wifi_task(void *pvParameter)
 {
     // WiFi yapılandırması
-
     strcpy(g_wifi_config.ssid, "Foras");             // WiFi ağınızın adı
     strcpy(g_wifi_config.password, "Foras_SleepAs"); // WiFi şifreniz
     g_wifi_config.max_retry = 5;                     // Maksimum yeniden bağlanma denemesi
     g_wifi_config.retry_interval_ms = 10000;         // Yeniden bağlanma aralığı (10 saniye)
+
+    // Statik IP yapılandırması
+    g_wifi_config.static_ip.use_static_ip = true; // Statik IP kullan
+    g_wifi_config.static_ip.ip[0] = 192;          // IP: 192.168.2.132
+    g_wifi_config.static_ip.ip[1] = 168;
+    g_wifi_config.static_ip.ip[2] = 2;
+    g_wifi_config.static_ip.ip[3] = 132;
+    g_wifi_config.static_ip.gateway[0] = 192; // Gateway: 192.168.2.1
+    g_wifi_config.static_ip.gateway[1] = 168;
+    g_wifi_config.static_ip.gateway[2] = 2;
+    g_wifi_config.static_ip.gateway[3] = 1;
+    g_wifi_config.static_ip.netmask[0] = 255; // Netmask: 255.255.255.0
+    g_wifi_config.static_ip.netmask[1] = 255;
+    g_wifi_config.static_ip.netmask[2] = 255;
+    g_wifi_config.static_ip.netmask[3] = 0;
 
     // WiFi kütüphanesini başlat (task otomatik olarak başlar)
     esp_err_t ret = _wifi_init_sta(&g_wifi_config);
@@ -650,5 +737,5 @@ void wifi_task(void *pvParameter)
 
 void _wifi_init(void)
 {
-    xTaskCreate(wifi_task, "wifi_task", 8 * 1024, NULL, 5, NULL);
+    xTaskCreatePinnedToCore(wifi_task, "wifi_task", 8 * 1024, NULL, 5, NULL, 0);
 }

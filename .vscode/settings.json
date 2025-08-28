@@ -37,6 +37,7 @@
     "gpio.h": "c",
     "cpap.h": "c",
     "esp_timer.h": "c",
-    "honeywell.h": "c"
+    "honeywell.h": "c",
+    "_wifi.h": "c"
   }
 }

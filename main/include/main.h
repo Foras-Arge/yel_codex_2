@@ -35,6 +35,14 @@ typedef enum
     DEVICE_MODE_ASV,
 } device_mode_t;
 
+typedef enum
+{
+    MQTT_ACTION_TYPE_START_STOP,
+    MQTT_ACTION_TYPE_RAMP_TIME,
+    MQTT_ACTION_TYPE_RAMP_PRESSURE,
+    MQTT_ACTION_TYPE_HUMID_LEVEL,
+} mqtt_action_type_t;
+
 typedef struct
 {
     bool first_start;

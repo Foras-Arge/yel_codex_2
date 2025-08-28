@@ -197,7 +197,7 @@ esp_err_t sd_init(void)
     // SD kart algılama görevini başlat (eğer zaten çalışmıyorsa)
     if (sd_detect_task_handle == NULL)
     {
-        BaseType_t task_created = xTaskCreate(sd_detect_task, "sd_detect_task", 1024 * 4, NULL, 5, &sd_detect_task_handle);
+        BaseType_t task_created = xTaskCreatePinnedToCore(sd_detect_task, "sd_detect_task", 1024 * 4, NULL, 5, &sd_detect_task_handle, 1);
         if (task_created != pdPASS)
         {
             ESP_LOGE(TAG, "SD algılama görevi oluşturulamadı");

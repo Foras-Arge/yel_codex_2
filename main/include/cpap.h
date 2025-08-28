@@ -62,6 +62,8 @@ typedef struct
     TaskHandle_t cpap_threshold_set_task_handle;
     TaskHandle_t cpap_mask_off_task_handle;
     TaskHandle_t cpap_oto_start_task_handle;
+    TaskHandle_t cpap_start_task_handle;
+    TaskHandle_t cpap_stop_task_handle;
 
     bool ramp_status;
     float ramp_time;
@@ -76,7 +78,7 @@ typedef struct
 
 extern cpap cpap_data;
 void cpap_init();
-void cpap_start();
-void cpap_stop();
+void cpap_start(void *params);
+void cpap_stop(void *params);
 
 #endif

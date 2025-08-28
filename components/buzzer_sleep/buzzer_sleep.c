@@ -99,9 +99,9 @@ void buzzer_sleep_init()
 
     gpio_install_isr_service(0);
     gpio_isr_handler_add(SLEEP_PIN, sleep_isr_handler, NULL);
-    xTaskCreate(sleep_task, "sleep_task", 4096, NULL, 20, &sleep_task_handle);
-    xTaskCreate(buzzer_task, "buzzer_task", 4096, NULL, 20, &buzzer_task_handle);
-    xTaskCreate(select_task, "select_task", 4096, NULL, 20, &select_task_handle);
+    xTaskCreatePinnedToCore(sleep_task, "sleep_task", 4096, NULL, 20, &sleep_task_handle, 0);
+    xTaskCreatePinnedToCore(buzzer_task, "buzzer_task", 4096, NULL, 20, &buzzer_task_handle, 0);
+    xTaskCreatePinnedToCore(select_task, "select_task", 4096, NULL, 20, &select_task_handle, 0);
     vTaskDelay(200 / portTICK_PERIOD_MS);
 
     if (gpio_get_level(SLEEP_PIN) == 0)
